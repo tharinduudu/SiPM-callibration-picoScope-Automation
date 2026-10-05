@@ -1,0 +1,8 @@
+{
+  "note": "Start from app/calibration_defaults.json or save a configuration from the application. Verify all detector-specific values before live use.",
+  "workflow_examples": {
+    "vbr_search": "Absolute bias scan of light-blocked SiPMs for p.e. spacing versus bias",
+    "dark_count": "Self-triggered pulse spectra at selected overvoltages",
+    "zero_event": "Reference-particle scan of full scintillator-channel efficiency"
+  }
+}

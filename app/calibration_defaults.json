@@ -1,0 +1,73 @@
+{
+  "common": {
+    "pi_host": "cosmic@10.51.100.224",
+    "pi_bias_agent": "/home/cosmic/vbr_bias_control.py",
+    "pi_four_channel_setter": "/home/cosmic/set_four_channel_efficiency_scan_bias.py",
+    "automation_dir": "../automation",
+    "output_root": "~/brDownVstudy/calibration_runs",
+    "scope_driver": "ps3000a",
+    "final_hardware_state": "hv_off",
+    "stop_temperature_compensation": true,
+    "restart_temperature_compensation": false
+  },
+  "zero_event": {
+    "overvoltage_points_v": [0.35, 0.50, 0.75, 1.00, 1.15, 1.25, 1.25, 1.15, 1.00, 0.75, 0.50, 0.35],
+    "reference_overvoltage_v": 2.5,
+    "events_per_point": 800,
+    "settle_seconds": 120,
+    "dut_channels": ["A", "B"],
+    "reference_channels": ["C", "D"],
+    "channel_ranges_mv": {"A": 200, "B": 200, "C": 10000, "D": 10000},
+    "probe_attenuations": {"A": 10, "B": 10, "C": 1, "D": 1},
+    "reference_thresholds_mv": {"C": 700, "D": 700},
+    "reference_coincidence_ns": 30,
+    "sample_interval_ns": 2,
+    "pre_trigger_ns": 800,
+    "post_trigger_ns": 400,
+    "auto_trigger_ms": 120000,
+    "minimum_reference_events": 650,
+    "dark_gate_start_ns": -520,
+    "dark_gate_stop_ns": -300,
+    "signal_relative_start_ns": -20,
+    "signal_relative_stop_ns": 200,
+    "sipm1_charge_gap_per_v_mV_ns": 519.6,
+    "sipm2_charge_gap_per_v_mV_ns": 533.433333,
+    "sipm1_height_gap_per_v_mv": 9.933333,
+    "sipm2_height_gap_per_v_mv": 10.066667
+  },
+  "dark_count": {
+    "overvoltage_points_v": [1.5, 2.0, 2.5, 3.0],
+    "reference_overvoltage_v": 2.5,
+    "events_per_channel": 10000,
+    "settle_seconds": 60,
+    "trigger_mv": 10,
+    "scope_range_mv": 50,
+    "probe_attenuation": 10,
+    "sample_interval_ns": 1,
+    "pre_trigger_ns": 200,
+    "post_trigger_ns": 400,
+    "auto_trigger_ms": 1000,
+    "signals": [
+      {"name": "SiPM 1", "detector_channel": 2, "scope_channel": "A", "color": "C0"},
+      {"name": "SiPM 2", "detector_channel": 3, "scope_channel": "B", "color": "C1"}
+    ]
+  },
+  "vbr_search": {
+    "bias_points_v": [52.0, 52.5, 53.0, 53.5, 54.0, 54.5, 55.0, 55.5, 56.0],
+    "events_per_point": 10000,
+    "settle_seconds": 30,
+    "minimum_bias_v": 50.0,
+    "maximum_bias_v": 57.0,
+    "scope_range_mv": 50,
+    "probe_attenuation": 10,
+    "sample_interval_ns": 1,
+    "pre_trigger_ns": 200,
+    "post_trigger_ns": 400,
+    "trigger_mv": 10,
+    "auto_trigger_ms": 1000,
+    "signals": [
+      {"name": "SIPM1", "detector_channel": 2, "scope_channel": "A", "color": "C0"},
+      {"name": "SIPM2", "detector_channel": 3, "scope_channel": "B", "color": "C1"}
+    ]
+  }
+}

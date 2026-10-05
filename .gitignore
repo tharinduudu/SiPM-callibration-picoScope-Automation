@@ -1,0 +1,15 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+*.tmp
+
+# Calibration runs contain many waveform CSV files and can be very large.
+calibration_runs/
+data/raw/
+outputs/
+
+# Local settings may contain laboratory hostnames and paths.
+calibration_config.json
+*.local.json

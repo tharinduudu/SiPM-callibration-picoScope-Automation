@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If this software contributes to a publication, please cite the repository and the corresponding gLOWCOST detector work."
+title: "SiPM Calibration with PicoScope Automation"
+type: software
+authors:
+  - family-names: "Hettiarachchi"
+    given-names: "Tharindu"
+repository-code: "https://github.com/tharinduudu/SiPM-callibration-picoScope-Automation"
+version: 0.1.0
+date-released: 2026-10-05
