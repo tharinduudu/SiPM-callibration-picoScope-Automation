@@ -9,3 +9,4 @@
 - Added MAX1932 and low-side DAC bias planning with ramping, locks, logs, and HV-off cleanup.
 - Added unit tests and complete synthetic workflow tests.
 - Added installation, operation, scientific-method, hardware, safety, data-format, troubleshooting, development, and validation documentation.
+- Added hover help for calibration fields and actions, including units and hardware effects.

@@ -36,6 +36,142 @@ WORKFLOWS = {
 }
 RESULT_PATTERN = re.compile(r"Results:\s*(.+)$")
 
+FIELD_HELP = {
+    "common.pi": "SSH destination of the Raspberry Pi that controls this detector's MAX1932 and low-side DAC.",
+    "common.tools": "Folder containing the PicoScope acquisition and scientific analysis scripts. Relative paths are resolved from the app folder.",
+    "common.output": "Parent folder for time-stamped run directories containing settings, logs, raw waveforms, tables, and plots.",
+    "common.final": "Hardware state requested when the run ends or is stopped. 'hv_off' is the safest default; 'restore_3v' reapplies 3 V overvoltage.",
+    "common.stop_temp": "Stops biasAdj.py before a live scan so temperature compensation cannot change the DAC while calibration controls it.",
+    "zero.points": "Overvoltage applied to regular-tile SiPMs 1 and 2 at each efficiency point. Repeated values test reproducibility and drift.",
+    "zero.reference_vov": "Fixed overvoltage for the two 9 x 9 cm reference-tile SiPMs while the regular-tile channels are scanned.",
+    "zero.events": "Number of four-channel waveforms requested at each overvoltage. More events reduce statistical uncertainty but require more time and storage.",
+    "zero.settle": "Delay after changing bias before acquisition begins, allowing voltage and SiPM response to stabilize.",
+    "zero.minimum_refs": "Minimum number of valid C-D reference coincidences required to report an efficiency result for a point.",
+    "zero.threshold_c": "Minimum probe-corrected pulse height required from the top 9 x 9 cm reference tile on scope C. The driver divides this value by the configured probe attenuation for the physical scope trigger.",
+    "zero.threshold_d": "Minimum probe-corrected pulse height required from the bottom 9 x 9 cm reference tile on scope D. The driver divides this value by the configured probe attenuation for the physical scope trigger.",
+    "zero.coincidence": "Maximum time separation allowed between the C and D reference pulses when selecting a particle track.",
+    "zero.sample": "Requested time between adjacent PicoScope samples. The driver records the actual interval in capture metadata.",
+    "zero.pre": "Waveform duration recorded before the scope trigger. It must be long enough to contain the complete dark window and baseline.",
+    "zero.post": "Waveform duration recorded after the trigger. It must contain the reference and regular-tile pulses plus the full signal window.",
+    "zero.auto": "Maximum time the scope waits for a hardware trigger before automatically returning a capture.",
+    "zero.dark_start": "Start of the off-time integration window, measured relative to the trigger. It estimates random dark and electronic pulses.",
+    "zero.dark_stop": "End of the off-time integration window. Its width must equal the signal-window width.",
+    "zero.signal_start": "Start of the regular-tile charge window relative to the selected reference-track pulse time.",
+    "zero.signal_stop": "End of the regular-tile charge window. Its width must equal the dark-window width.",
+    "zero.s1_charge": "Measured slope of SiPM 1 one-photoelectron pulse-area spacing versus overvoltage. It sets the zero-event charge boundary.",
+    "zero.s2_charge": "Measured slope of SiPM 2 one-photoelectron pulse-area spacing versus overvoltage. It sets the zero-event charge boundary.",
+    "zero.s1_height": "Measured slope of SiPM 1 one-photoelectron pulse-height spacing versus overvoltage, used for waveform diagnostics.",
+    "zero.s2_height": "Measured slope of SiPM 2 one-photoelectron pulse-height spacing versus overvoltage, used for waveform diagnostics.",
+    "dark.points": "Overvoltages at which self-triggered dark-pulse spectra are recorded for each selected SiPM.",
+    "dark.reference_vov": "Overvoltage held on the two channels not being studied during this scan.",
+    "dark.events": "Number of self-triggered waveforms recorded from each SiPM at every overvoltage.",
+    "dark.settle": "Delay after each bias change before recording dark pulses.",
+    "dark.trigger": "Probe-corrected pulse height required to trigger. The driver divides it by probe attenuation for the physical PicoScope input. Lower values include smaller pulses but can trigger on noise.",
+    "dark.range": "PicoScope input full-scale range before probe correction. Increase it if the scope overflows; too large a range reduces ADC resolution.",
+    "dark.atten": "Physical probe attenuation. Enter 10 for a 10:1 probe and 1 for a direct or 1x connection.",
+    "dark.sample": "Requested time between waveform samples for dark-pulse acquisition.",
+    "dark.pre": "Amount of waveform recorded before the dark-pulse trigger for baseline measurement.",
+    "dark.post": "Amount of waveform recorded after the trigger, including the pulse tail.",
+    "dark.auto": "Maximum scope trigger wait per event. This does not convert the block-capture rate into an absolute dark-count rate.",
+    "vbr.points": "Absolute SiPM bias voltages used to measure photoelectron spacing as a function of bias.",
+    "vbr.minimum": "Software lower bound for requested absolute bias. It prevents accidental points below the approved scan range.",
+    "vbr.maximum": "Software upper bound for requested absolute bias. It must not exceed the SiPM or readout safety limit.",
+    "vbr.events": "Number of self-triggered waveforms recorded for each SiPM at every absolute bias point.",
+    "vbr.settle": "Delay after setting an absolute bias before waveform acquisition starts.",
+    "vbr.trigger": "Probe-corrected dark-pulse trigger level. Keep it unchanged across a Vbr scan to avoid changing event selection.",
+    "vbr.range": "PicoScope input full-scale range before probe correction. Use the same unsaturated range throughout the scan.",
+    "vbr.atten": "Physical attenuation of the scope probe. An incorrect value scales every saved pulse and can hide saturation.",
+    "vbr.sample": "Requested time between adjacent waveform samples used for peak height and pulse-area measurements.",
+    "vbr.pre": "Pre-trigger record used to estimate the event-by-event baseline and electronic noise.",
+    "vbr.post": "Post-trigger record containing the prompt pulse and its decay tail.",
+    "vbr.auto": "Maximum time the scope waits for each self-trigger before returning an automatic capture.",
+}
+
+
+def field_help(key: str) -> str:
+    if key in FIELD_HELP:
+        return FIELD_HELP[key]
+    if ".range_" in key:
+        return "PicoScope full-scale input range for this channel, before probe correction. It must contain the waveform without overflow."
+    if ".atten_" in key:
+        return "Physical attenuation of this channel's probe. Enter 10 for a 10:1 probe or 1 for a direct/1x connection."
+    if ".name_" in key:
+        return "Human-readable SiPM identifier written to result folders, tables, plot titles, and manifests."
+    if ".detector_" in key:
+        return "Low-side DAC channel on the detector PCB that biases this SiPM. Verify the physical channel map before a live run."
+    if ".scope_" in key:
+        return "PicoScope input carrying this SiPM's amplified waveform. Use A, B, C, or D."
+    return ""
+
+
+class ToolTip:
+    """Small delayed help window for laboratory controls."""
+
+    def __init__(self, widget: tk.Misc, text: str, delay_ms: int = 550) -> None:
+        self.widget = widget
+        self.text = text
+        self.delay_ms = delay_ms
+        self.pending: str | None = None
+        self.window: tk.Toplevel | None = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+        widget.bind("<Destroy>", self._hide, add="+")
+
+    def _schedule(self, _event: tk.Event | None = None) -> None:
+        self._cancel()
+        self.pending = self.widget.after(self.delay_ms, self._show)
+
+    def _cancel(self) -> None:
+        if self.pending is not None:
+            try:
+                self.widget.after_cancel(self.pending)
+            except tk.TclError:
+                pass
+            self.pending = None
+
+    def _show(self) -> None:
+        self.pending = None
+        if self.window is not None or not self.widget.winfo_exists():
+            return
+        window = tk.Toplevel(self.widget)
+        window.wm_overrideredirect(True)
+        window.attributes("-topmost", True)
+        label = tk.Label(
+            window,
+            text=self.text,
+            justify="left",
+            wraplength=380,
+            background="#fffbd6",
+            foreground="#17242b",
+            relief="solid",
+            borderwidth=1,
+            padx=9,
+            pady=7,
+        )
+        label.pack()
+        window.update_idletasks()
+        x = self.widget.winfo_pointerx() + 14
+        y = self.widget.winfo_pointery() + 12
+        x = min(x, self.widget.winfo_screenwidth() - window.winfo_reqwidth() - 8)
+        y = min(y, self.widget.winfo_screenheight() - window.winfo_reqheight() - 8)
+        window.wm_geometry(f"+{max(0, x)}+{max(0, y)}")
+        self.window = window
+
+    def _hide(self, _event: tk.Event | None = None) -> None:
+        self._cancel()
+        if self.window is not None:
+            try:
+                self.window.destroy()
+            except tk.TclError:
+                pass
+            self.window = None
+
+
+def add_tooltip(widget: tk.Misc, text: str) -> None:
+    if text:
+        setattr(widget, "_glowcost_tooltip", ToolTip(widget, text))
+
 
 class ScrolledFrame(ttk.Frame):
     """A plain vertical form that still fits on a small lab monitor."""
@@ -132,12 +268,18 @@ class CalibrationApp(tk.Tk):
         self.preview_label.pack(fill="both", expand=True)
         preview_buttons = ttk.Frame(preview_frame)
         preview_buttons.pack(fill="x", pady=(6, 0))
-        ttk.Button(preview_buttons, text="Previous", command=lambda: self._change_image(-1)).pack(side="left")
+        previous_button = ttk.Button(
+            preview_buttons, text="Previous", command=lambda: self._change_image(-1)
+        )
+        previous_button.pack(side="left")
+        add_tooltip(previous_button, "Show the previous PNG result produced in the latest run directory.")
         self.image_name = tk.StringVar(value="")
         ttk.Label(preview_buttons, textvariable=self.image_name, anchor="center").pack(
             side="left", fill="x", expand=True, padx=8
         )
-        ttk.Button(preview_buttons, text="Next", command=lambda: self._change_image(1)).pack(side="right")
+        next_button = ttk.Button(preview_buttons, text="Next", command=lambda: self._change_image(1))
+        next_button.pack(side="right")
+        add_tooltip(next_button, "Show the next PNG result produced in the latest run directory.")
 
         log_frame = ttk.LabelFrame(right, text="Run log", padding=6)
         log_frame.pack(fill="both", expand=True, pady=(8, 0))
@@ -166,11 +308,17 @@ class CalibrationApp(tk.Tk):
     ) -> int:
         variable = tk.StringVar()
         self.fields[key] = variable
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=3)
-        ttk.Entry(parent, textvariable=variable, width=width).grid(
+        label_widget = ttk.Label(parent, text=label)
+        label_widget.grid(row=row, column=0, sticky="w", pady=3)
+        entry_widget = ttk.Entry(parent, textvariable=variable, width=width)
+        entry_widget.grid(
             row=row, column=1, sticky="ew", padx=(10, 6), pady=3
         )
-        ttk.Label(parent, text=note, foreground="#5b6570").grid(row=row, column=2, sticky="w")
+        note_widget = ttk.Label(parent, text=note, foreground="#5b6570")
+        note_widget.grid(row=row, column=2, sticky="w")
+        help_text = field_help(key)
+        for widget in (label_widget, entry_widget, note_widget):
+            add_tooltip(widget, help_text)
         return row + 1
 
     def _build_zero_event_tab(self, parent: ttk.Frame) -> None:
@@ -192,8 +340,8 @@ class CalibrationApp(tk.Tk):
         row = self._entry(parent, row, "zero.minimum_refs", "Minimum accepted tracks")
 
         row = self._section(parent, "Reference selection", row)
-        row = self._entry(parent, row, "zero.threshold_c", "Small top tile threshold (C)", note="mV at scope input")
-        row = self._entry(parent, row, "zero.threshold_d", "Small bottom tile threshold (D)", note="mV at scope input")
+        row = self._entry(parent, row, "zero.threshold_c", "Small top tile threshold (C)", note="mV, probe corrected")
+        row = self._entry(parent, row, "zero.threshold_d", "Small bottom tile threshold (D)", note="mV, probe corrected")
         row = self._entry(parent, row, "zero.coincidence", "C-D coincidence window", note="ns")
 
         row = self._section(parent, "Scope channels", row)
@@ -235,7 +383,7 @@ class CalibrationApp(tk.Tk):
             ("dark.reference_vov", "Other two channels", "V overvoltage"),
             ("dark.events", "Events per SiPM", ""),
             ("dark.settle", "Settling time", "seconds"),
-            ("dark.trigger", "Self-trigger level", "mV at scope input"),
+            ("dark.trigger", "Self-trigger level", "mV, probe corrected"),
             ("dark.range", "Scope range", "mV full scale"),
             ("dark.atten", "Probe attenuation", ""),
         ):
@@ -269,7 +417,7 @@ class CalibrationApp(tk.Tk):
             ("vbr.maximum", "Allowed maximum bias", "V"),
             ("vbr.events", "Events per SiPM", ""),
             ("vbr.settle", "Settling time", "seconds"),
-            ("vbr.trigger", "Self-trigger level", "mV at scope input"),
+            ("vbr.trigger", "Self-trigger level", "mV, probe corrected"),
             ("vbr.range", "Scope range", "mV full scale"),
             ("vbr.atten", "Probe attenuation", ""),
         ):
@@ -305,48 +453,86 @@ class CalibrationApp(tk.Tk):
         for key, label, row, column in common_fields:
             variable = tk.StringVar()
             self.fields[key] = variable
-            ttk.Label(panel, text=label).grid(row=row, column=column, sticky="w", pady=3)
-            ttk.Entry(panel, textvariable=variable).grid(
+            label_widget = ttk.Label(panel, text=label)
+            label_widget.grid(row=row, column=column, sticky="w", pady=3)
+            entry_widget = ttk.Entry(panel, textvariable=variable)
+            entry_widget.grid(
                 row=row, column=column + 1, sticky="ew", padx=(7, 12), pady=3
             )
+            add_tooltip(label_widget, field_help(key))
+            add_tooltip(entry_widget, field_help(key))
 
-        ttk.Label(panel, text="After run").grid(row=1, column=2, sticky="w")
+        final_label = ttk.Label(panel, text="After run")
+        final_label.grid(row=1, column=2, sticky="w")
         self.fields["common.final"] = tk.StringVar()
-        ttk.Combobox(
+        final_box = ttk.Combobox(
             panel,
             textvariable=self.fields["common.final"],
             values=("hv_off", "restore_3v"),
             state="readonly",
             width=14,
-        ).grid(row=1, column=3, sticky="w", padx=(7, 12))
+        )
+        final_box.grid(row=1, column=3, sticky="w", padx=(7, 12))
+        add_tooltip(final_label, field_help("common.final"))
+        add_tooltip(final_box, field_help("common.final"))
         self.fields["common.stop_temp"] = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
+        stop_temp = ttk.Checkbutton(
             panel,
             text="Stop temperature compensation during live calibration",
             variable=self.fields["common.stop_temp"],
-        ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(4, 0))
+        )
+        stop_temp.grid(row=2, column=0, columnspan=4, sticky="w", pady=(4, 0))
+        add_tooltip(stop_temp, field_help("common.stop_temp"))
 
     def _build_actions(self, parent: ttk.Frame) -> None:
         actions = ttk.Frame(parent, padding=(0, 8, 0, 0))
         actions.pack(fill="x")
         self.armed = tk.BooleanVar(value=False)
-        ttk.Checkbutton(actions, text="Hardware connections checked", variable=self.armed).pack(
-            anchor="w", pady=(0, 5)
+        hardware_check = ttk.Checkbutton(
+            actions, text="Hardware connections checked", variable=self.armed
+        )
+        hardware_check.pack(anchor="w", pady=(0, 5))
+        add_tooltip(
+            hardware_check,
+            "Required before a live run. Tick only after verifying detector identity, channel wiring, probe attenuation, scope range, and physical bias voltage.",
         )
         button_row = ttk.Frame(actions)
         button_row.pack(fill="x")
         self.dry_button = ttk.Button(button_row, text="Dry run", command=lambda: self._start(False))
         self.dry_button.pack(side="left", padx=(0, 4))
+        add_tooltip(
+            self.dry_button,
+            "Run the selected workflow with synthetic waveforms. It tests settings, analysis, plots, and files without opening the scope or changing detector bias.",
+        )
         self.live_button = ttk.Button(button_row, text="Start live run", command=lambda: self._start(True))
         self.live_button.pack(side="left", padx=4)
+        add_tooltip(
+            self.live_button,
+            "Start real PicoScope acquisition and send bias commands to the detector Pi. A hardware check and typed confirmation are required.",
+        )
         self.stop_button = ttk.Button(button_row, text="Stop", command=self._stop, state="disabled")
         self.stop_button.pack(side="left", padx=4)
-        ttk.Button(button_row, text="HV off", style="Danger.TButton", command=self._emergency_off).pack(
-            side="left", padx=(16, 4)
+        add_tooltip(
+            self.stop_button,
+            "Terminate the active acquisition, preserve completed data, and ask the runner to apply the configured final hardware state.",
         )
-        ttk.Button(button_row, text="Open results", command=self._open_results).pack(side="right")
-        ttk.Button(button_row, text="Load config", command=self._load_config_file).pack(side="right", padx=4)
-        ttk.Button(button_row, text="Save config", command=self._save_config_file).pack(side="right", padx=4)
+        hv_off_button = ttk.Button(
+            button_row, text="HV off", style="Danger.TButton", command=self._emergency_off
+        )
+        hv_off_button.pack(side="left", padx=(16, 4))
+        add_tooltip(
+            hv_off_button,
+            "Stop the active run and command detector channels 0-3 to the HV-off state. Always verify the physical voltage after an abnormal condition.",
+        )
+        open_button = ttk.Button(button_row, text="Open results", command=self._open_results)
+        open_button.pack(side="right")
+        add_tooltip(open_button, "Open the latest run directory, or the configured output folder if no run has completed yet.")
+        load_button = ttk.Button(button_row, text="Load config", command=self._load_config_file)
+        load_button.pack(side="right", padx=4)
+        add_tooltip(load_button, "Load and validate a previously saved JSON configuration for all three workflows.")
+        save_button = ttk.Button(button_row, text="Save config", command=self._save_config_file)
+        save_button.pack(side="right", padx=4)
+        add_tooltip(save_button, "Validate the current fields and save the complete calibration configuration as JSON.")
 
     def _load_into_fields(self, config: dict) -> None:
         common = config["common"]

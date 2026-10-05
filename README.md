@@ -8,6 +8,8 @@ This repository contains the acquisition, analysis, and hardware-control softwar
 
 The graphical application is intended for the Ubuntu computer connected to the PicoScope. Bias commands are sent over SSH to the detector Raspberry Pi. Dry-run mode uses synthetic waveforms and does not touch either instrument.
 
+Hover over a setting or action button for a short explanation of what it controls, the expected units, and its effect on acquisition or detector hardware.
+
 ![gLOWCOST calibration application](docs/images/calibration_ui.png)
 
 > **Hardware warning:** the bias-control constants in `pi/` are measurements from one readout. Do not use them on another detector until its MAX1932 and DAC transfer functions, channel mapping, SiPM breakdown voltages, and temperature sensor have been checked. A voltage reported by software is a calculated value, not an independent voltage readback.
