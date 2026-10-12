@@ -8,6 +8,8 @@
 - Split reusable Tkinter components and help content out of the main application file.
 - Added frontend and backend development guides and help-content coverage tests.
 - Updated the operator guide and interface screenshot.
+- Added explicit, separately gated low- and high-overvoltage characterization modes.
+- Added a reproducible lower-overvoltage zero-event scan with automatic scope ranges and 3 V restoration.
 
 ## 0.1.0 - 2026-10-05
 

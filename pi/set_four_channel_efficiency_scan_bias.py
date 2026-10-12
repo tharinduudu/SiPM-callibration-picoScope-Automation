@@ -22,8 +22,10 @@ from vbr_bias_control import (
 
 
 TEMPERATURE_COEFFICIENT_V_PER_C = 0.054
-MIN_DUT_OVERVOLTAGE_V = 0.2
-MAX_DUT_OVERVOLTAGE_V = 4.5
+NORMAL_MIN_DUT_OVERVOLTAGE_V = 1.0
+LOW_SCAN_MIN_DUT_OVERVOLTAGE_V = 0.2
+NORMAL_MAX_DUT_OVERVOLTAGE_V = 4.5
+HIGH_SCAN_MAX_DUT_OVERVOLTAGE_V = 7.5
 DEVICES = {
     0: {
         "label": "SiPM C1 - top 9x9 cm reference tile",
@@ -64,18 +66,42 @@ def main() -> None:
     parser.add_argument("--reference-overvoltage", type=float, default=3.0)
     parser.add_argument("--ramp-step-codes", type=int, default=32)
     parser.add_argument("--ramp-delay-s", type=float, default=0.08)
+    parser.add_argument(
+        "--allow-low-overvoltage",
+        action="store_true",
+        help="allow a deliberate characterization scan below the normal 1.0 V limit",
+    )
+    parser.add_argument(
+        "--allow-high-overvoltage",
+        action="store_true",
+        help="allow a short characterization scan above the normal 4.5 V limit",
+    )
     parser.add_argument("--confirm", required=True)
     args = parser.parse_args()
 
     if args.confirm != "SET_FOUR_SCAN_BIASES":
         parser.error("live operation requires --confirm SET_FOUR_SCAN_BIASES")
-    if not MIN_DUT_OVERVOLTAGE_V <= args.dut_overvoltage <= MAX_DUT_OVERVOLTAGE_V:
+    minimum_dut_overvoltage = (
+        LOW_SCAN_MIN_DUT_OVERVOLTAGE_V
+        if args.allow_low_overvoltage
+        else NORMAL_MIN_DUT_OVERVOLTAGE_V
+    )
+    maximum_dut_overvoltage = (
+        HIGH_SCAN_MAX_DUT_OVERVOLTAGE_V
+        if args.allow_high_overvoltage
+        else NORMAL_MAX_DUT_OVERVOLTAGE_V
+    )
+    maximum_reference_overvoltage = 5.5 if args.allow_high_overvoltage else 4.0
+    if not minimum_dut_overvoltage <= args.dut_overvoltage <= maximum_dut_overvoltage:
         parser.error(
-            f"DUT overvoltage must be between {MIN_DUT_OVERVOLTAGE_V} "
-            f"and {MAX_DUT_OVERVOLTAGE_V} V"
+            f"DUT overvoltage must be between {minimum_dut_overvoltage:.1f} "
+            f"and {maximum_dut_overvoltage:.1f} V"
         )
-    if not 1.0 <= args.reference_overvoltage <= 4.0:
-        parser.error("reference overvoltage must be between 1.0 and 4.0 V")
+    if not 1.0 <= args.reference_overvoltage <= maximum_reference_overvoltage:
+        parser.error(
+            "reference overvoltage must be between 1.0 and "
+            f"{maximum_reference_overvoltage:.1f} V"
+        )
 
     environment = read_environment(False)
     temperature_c = float(environment["temperature_C"])
@@ -104,6 +130,8 @@ def main() -> None:
         "temperature_coefficient_V_per_C": TEMPERATURE_COEFFICIENT_V_PER_C,
         "reference_overvoltage_V": args.reference_overvoltage,
         "dut_overvoltage_V": args.dut_overvoltage,
+        "low_overvoltage_characterization": args.allow_low_overvoltage,
+        "high_overvoltage_characterization": args.allow_high_overvoltage,
         "channel_mapping": mapping,
         "plan": plan,
     }
