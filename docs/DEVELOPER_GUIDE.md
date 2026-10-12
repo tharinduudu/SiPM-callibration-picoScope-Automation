@@ -1,5 +1,7 @@
 # Developer Guide
 
+This page is the architecture overview. The [frontend guide](FRONTEND_GUIDE.md) follows the Tkinter interface and student workflow in detail. The [backend guide](BACKEND_GUIDE.md) follows a run from validation through hardware control, acquisition, analysis, and cleanup.
+
 ## Design Goals
 
 The code is split into small command-line programs so that each scientific stage can be inspected and rerun without the graphical interface. The GUI edits configuration and starts a runner; it does not contain the analysis mathematics.
@@ -23,6 +25,8 @@ flowchart TD
 ### Desktop application
 
 - `calibration_app.py`: Tkinter controls, state, start/stop actions, and log/plot display.
+- `help_content.py`: plain-language help pages for every operator-entered variable.
+- `ui_components.py`: reusable scrolling form, hover reminder, help dialog, and diagrams.
 - `calibration_core.py`: configuration parsing, validation, logging, cancellable child processes, and JSON helpers.
 - `calibration_runner.py`: run lifecycle, hardware lock, SSH calls, acquisition-analysis sequencing, manifest updates, and finalization.
 - `calibration_plots.py`: workflow-level summary plots.

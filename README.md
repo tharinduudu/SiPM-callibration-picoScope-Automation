@@ -8,7 +8,7 @@ This repository contains the acquisition, analysis, and hardware-control softwar
 
 The graphical application is intended for the Ubuntu computer connected to the PicoScope. Bias commands are sent over SSH to the detector Raspberry Pi. Dry-run mode uses synthetic waveforms and does not touch either instrument.
 
-Hover over a setting or action button for a short explanation of what it controls, the expected units, and its effect on acquisition or detector hardware.
+Every input has a `?` button. It opens a plain-language explanation of what the value controls, why it matters, how to choose it, and the units. Timing, bias, probe, threshold, and statistics pages also include a small sketch.
 
 ![gLOWCOST calibration application](docs/images/calibration_ui.png)
 
@@ -47,7 +47,16 @@ Before connecting to hardware, run the tests:
 make check
 ```
 
-Open the application, select **Dry run**, and run each workflow once. Dry-run output is written below `~/brDownVstudy/calibration_runs` by default.
+The application requires these steps in order:
+
+1. Choose the measurement method.
+2. Enter and check the settings.
+3. Select **Review settings** and accept the run plan.
+4. Complete a **Dry run** with those exact settings.
+5. Check the physical wiring, probe attenuation, detector identity, and bias measurement, then tick **Hardware connections checked**.
+6. Start the live run and enter the requested confirmation.
+
+Changing any value after review locks the later steps until the revised plan is reviewed and dry-run again. Dry-run output is written below `~/brDownVstudy/calibration_runs` by default.
 
 Live mode requires all of the following:
 
@@ -79,6 +88,8 @@ The default final state is **HV off**, including after Stop or most failures.
 - [Data and result formats](docs/DATA_FORMAT.md)
 - [Safety and failure recovery](docs/SAFETY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Frontend guide](docs/FRONTEND_GUIDE.md)
+- [Backend guide](docs/BACKEND_GUIDE.md)
 - [Software architecture and development](docs/DEVELOPER_GUIDE.md)
 - [Validation record](docs/VALIDATION.md)
 - [Primary references](docs/REFERENCES.md)

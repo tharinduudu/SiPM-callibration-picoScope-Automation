@@ -30,6 +30,10 @@ This is a saved default, not an automatic wiring measurement. Edit the configura
 
 The left side selects a workflow and contains editable settings. The right side reports the current phase, command output, plots, and run directory. Save a configuration before a long run so the intended settings are preserved outside the generated run folder as well.
 
+Every setting has a `?` button. Select it for the physical meaning, units, reason the value matters, and a practical method for choosing it. A short hover reminder is also available.
+
+The application enforces the workflow shown above the tabs. Review the plan first, complete a synthetic dry run with the same settings, and only then check the physical hardware. The live button remains locked until all three steps are complete. Editing a value after the dry run locks the hardware and live steps again.
+
 ## Dry Run
 
 Dry run is the default. It creates synthetic waveforms, runs the same analysis programs, generates plots, and exercises the run manifest. It does not open the scope, use SSH, stop temperature compensation, or set bias.
@@ -45,12 +49,13 @@ Use dry run to check:
 ## Live Run
 
 1. Select the workflow.
-2. Review every visible setting.
-3. Select live operation.
-4. Type `RUN_LIVE_HARDWARE` in the confirmation field.
-5. Start the run.
-6. Observe the first bias plan and scope preflight.
-7. Inspect the first raw waveforms before leaving a long scan unattended.
+2. Select **Review settings**, read the run plan, and accept it.
+3. Complete the required dry run.
+4. Verify the physical connections and tick **Hardware connections checked**.
+5. Select **Start live run**.
+6. Type `RUN LIVE` in the confirmation field.
+7. Observe the first bias plan and scope preflight.
+8. Inspect the first raw waveforms before leaving a long scan unattended.
 
 Only one run can own `/tmp/glowcost_calibration_app.lock`. This prevents two copies of the application from controlling the same local setup at once.
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 - 2026-10-12
+
+- Added an enforced review, dry-run, hardware-check, and live-run sequence.
+- Added a click-to-open help page beside every input, with plain-language selection advice and conceptual diagrams.
+- Changed fixed hardware choices to dropdown controls for scope range, attenuation, detector channel, and scope channel.
+- Split reusable Tkinter components and help content out of the main application file.
+- Added frontend and backend development guides and help-content coverage tests.
+- Updated the operator guide and interface screenshot.
+
 ## 0.1.0 - 2026-10-05
 
 - Added the gLOWCOST SiPM calibration desktop application.

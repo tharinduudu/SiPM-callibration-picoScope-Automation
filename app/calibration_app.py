@@ -20,6 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 from calibration_core import (
     APP_DIR,
     DEFAULT_CONFIG,
+    SCOPE_RANGES_MV,
     ConfigurationError,
     format_float_list,
     load_config,
@@ -27,6 +28,8 @@ from calibration_core import (
     validate_config,
     write_json,
 )
+from help_content import field_help
+from ui_components import ScrolledFrame, add_tooltip, show_help
 
 
 WORKFLOWS = {
@@ -36,167 +39,6 @@ WORKFLOWS = {
 }
 RESULT_PATTERN = re.compile(r"Results:\s*(.+)$")
 
-FIELD_HELP = {
-    "common.pi": "SSH destination of the Raspberry Pi that controls this detector's MAX1932 and low-side DAC.",
-    "common.tools": "Folder containing the PicoScope acquisition and scientific analysis scripts. Relative paths are resolved from the app folder.",
-    "common.output": "Parent folder for time-stamped run directories containing settings, logs, raw waveforms, tables, and plots.",
-    "common.final": "Hardware state requested when the run ends or is stopped. 'hv_off' is the safest default; 'restore_3v' reapplies 3 V overvoltage.",
-    "common.stop_temp": "Stops biasAdj.py before a live scan so temperature compensation cannot change the DAC while calibration controls it.",
-    "zero.points": "Overvoltage applied to regular-tile SiPMs 1 and 2 at each efficiency point. Repeated values test reproducibility and drift.",
-    "zero.reference_vov": "Fixed overvoltage for the two 9 x 9 cm reference-tile SiPMs while the regular-tile channels are scanned.",
-    "zero.events": "Number of four-channel waveforms requested at each overvoltage. More events reduce statistical uncertainty but require more time and storage.",
-    "zero.settle": "Delay after changing bias before acquisition begins, allowing voltage and SiPM response to stabilize.",
-    "zero.minimum_refs": "Minimum number of valid C-D reference coincidences required to report an efficiency result for a point.",
-    "zero.threshold_c": "Minimum probe-corrected pulse height required from the top 9 x 9 cm reference tile on scope C. The driver divides this value by the configured probe attenuation for the physical scope trigger.",
-    "zero.threshold_d": "Minimum probe-corrected pulse height required from the bottom 9 x 9 cm reference tile on scope D. The driver divides this value by the configured probe attenuation for the physical scope trigger.",
-    "zero.coincidence": "Maximum time separation allowed between the C and D reference pulses when selecting a particle track.",
-    "zero.sample": "Requested time between adjacent PicoScope samples. The driver records the actual interval in capture metadata.",
-    "zero.pre": "Waveform duration recorded before the scope trigger. It must be long enough to contain the complete dark window and baseline.",
-    "zero.post": "Waveform duration recorded after the trigger. It must contain the reference and regular-tile pulses plus the full signal window.",
-    "zero.auto": "Maximum time the scope waits for a hardware trigger before automatically returning a capture.",
-    "zero.dark_start": "Start of the off-time integration window, measured relative to the trigger. It estimates random dark and electronic pulses.",
-    "zero.dark_stop": "End of the off-time integration window. Its width must equal the signal-window width.",
-    "zero.signal_start": "Start of the regular-tile charge window relative to the selected reference-track pulse time.",
-    "zero.signal_stop": "End of the regular-tile charge window. Its width must equal the dark-window width.",
-    "zero.s1_charge": "Measured slope of SiPM 1 one-photoelectron pulse-area spacing versus overvoltage. It sets the zero-event charge boundary.",
-    "zero.s2_charge": "Measured slope of SiPM 2 one-photoelectron pulse-area spacing versus overvoltage. It sets the zero-event charge boundary.",
-    "zero.s1_height": "Measured slope of SiPM 1 one-photoelectron pulse-height spacing versus overvoltage, used for waveform diagnostics.",
-    "zero.s2_height": "Measured slope of SiPM 2 one-photoelectron pulse-height spacing versus overvoltage, used for waveform diagnostics.",
-    "dark.points": "Overvoltages at which self-triggered dark-pulse spectra are recorded for each selected SiPM.",
-    "dark.reference_vov": "Overvoltage held on the two channels not being studied during this scan.",
-    "dark.events": "Number of self-triggered waveforms recorded from each SiPM at every overvoltage.",
-    "dark.settle": "Delay after each bias change before recording dark pulses.",
-    "dark.trigger": "Probe-corrected pulse height required to trigger. The driver divides it by probe attenuation for the physical PicoScope input. Lower values include smaller pulses but can trigger on noise.",
-    "dark.range": "PicoScope input full-scale range before probe correction. Increase it if the scope overflows; too large a range reduces ADC resolution.",
-    "dark.atten": "Physical probe attenuation. Enter 10 for a 10:1 probe and 1 for a direct or 1x connection.",
-    "dark.sample": "Requested time between waveform samples for dark-pulse acquisition.",
-    "dark.pre": "Amount of waveform recorded before the dark-pulse trigger for baseline measurement.",
-    "dark.post": "Amount of waveform recorded after the trigger, including the pulse tail.",
-    "dark.auto": "Maximum scope trigger wait per event. This does not convert the block-capture rate into an absolute dark-count rate.",
-    "vbr.points": "Absolute SiPM bias voltages used to measure photoelectron spacing as a function of bias.",
-    "vbr.minimum": "Software lower bound for requested absolute bias. It prevents accidental points below the approved scan range.",
-    "vbr.maximum": "Software upper bound for requested absolute bias. It must not exceed the SiPM or readout safety limit.",
-    "vbr.events": "Number of self-triggered waveforms recorded for each SiPM at every absolute bias point.",
-    "vbr.settle": "Delay after setting an absolute bias before waveform acquisition starts.",
-    "vbr.trigger": "Probe-corrected dark-pulse trigger level. Keep it unchanged across a Vbr scan to avoid changing event selection.",
-    "vbr.range": "PicoScope input full-scale range before probe correction. Use the same unsaturated range throughout the scan.",
-    "vbr.atten": "Physical attenuation of the scope probe. An incorrect value scales every saved pulse and can hide saturation.",
-    "vbr.sample": "Requested time between adjacent waveform samples used for peak height and pulse-area measurements.",
-    "vbr.pre": "Pre-trigger record used to estimate the event-by-event baseline and electronic noise.",
-    "vbr.post": "Post-trigger record containing the prompt pulse and its decay tail.",
-    "vbr.auto": "Maximum time the scope waits for each self-trigger before returning an automatic capture.",
-}
-
-
-def field_help(key: str) -> str:
-    if key in FIELD_HELP:
-        return FIELD_HELP[key]
-    if ".range_" in key:
-        return "PicoScope full-scale input range for this channel, before probe correction. It must contain the waveform without overflow."
-    if ".atten_" in key:
-        return "Physical attenuation of this channel's probe. Enter 10 for a 10:1 probe or 1 for a direct/1x connection."
-    if ".name_" in key:
-        return "Human-readable SiPM identifier written to result folders, tables, plot titles, and manifests."
-    if ".detector_" in key:
-        return "Low-side DAC channel on the detector PCB that biases this SiPM. Verify the physical channel map before a live run."
-    if ".scope_" in key:
-        return "PicoScope input carrying this SiPM's amplified waveform. Use A, B, C, or D."
-    return ""
-
-
-class ToolTip:
-    """Small delayed help window for laboratory controls."""
-
-    def __init__(self, widget: tk.Misc, text: str, delay_ms: int = 550) -> None:
-        self.widget = widget
-        self.text = text
-        self.delay_ms = delay_ms
-        self.pending: str | None = None
-        self.window: tk.Toplevel | None = None
-        widget.bind("<Enter>", self._schedule, add="+")
-        widget.bind("<Leave>", self._hide, add="+")
-        widget.bind("<ButtonPress>", self._hide, add="+")
-        widget.bind("<Destroy>", self._hide, add="+")
-
-    def _schedule(self, _event: tk.Event | None = None) -> None:
-        self._cancel()
-        self.pending = self.widget.after(self.delay_ms, self._show)
-
-    def _cancel(self) -> None:
-        if self.pending is not None:
-            try:
-                self.widget.after_cancel(self.pending)
-            except tk.TclError:
-                pass
-            self.pending = None
-
-    def _show(self) -> None:
-        self.pending = None
-        if self.window is not None or not self.widget.winfo_exists():
-            return
-        window = tk.Toplevel(self.widget)
-        window.wm_overrideredirect(True)
-        window.attributes("-topmost", True)
-        label = tk.Label(
-            window,
-            text=self.text,
-            justify="left",
-            wraplength=380,
-            background="#fffbd6",
-            foreground="#17242b",
-            relief="solid",
-            borderwidth=1,
-            padx=9,
-            pady=7,
-        )
-        label.pack()
-        window.update_idletasks()
-        x = self.widget.winfo_pointerx() + 14
-        y = self.widget.winfo_pointery() + 12
-        x = min(x, self.widget.winfo_screenwidth() - window.winfo_reqwidth() - 8)
-        y = min(y, self.widget.winfo_screenheight() - window.winfo_reqheight() - 8)
-        window.wm_geometry(f"+{max(0, x)}+{max(0, y)}")
-        self.window = window
-
-    def _hide(self, _event: tk.Event | None = None) -> None:
-        self._cancel()
-        if self.window is not None:
-            try:
-                self.window.destroy()
-            except tk.TclError:
-                pass
-            self.window = None
-
-
-def add_tooltip(widget: tk.Misc, text: str) -> None:
-    if text:
-        setattr(widget, "_glowcost_tooltip", ToolTip(widget, text))
-
-
-class ScrolledFrame(ttk.Frame):
-    """A plain vertical form that still fits on a small lab monitor."""
-
-    def __init__(self, parent: tk.Misc) -> None:
-        super().__init__(parent)
-        canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0)
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
-        self.body = ttk.Frame(canvas, padding=(4, 4, 12, 12))
-        window = canvas.create_window((0, 0), window=self.body, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.grid(row=0, column=0, sticky="nsew")
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        self.rowconfigure(0, weight=1)
-        self.columnconfigure(0, weight=1)
-        self.body.columnconfigure(1, weight=1)
-        self.body.bind(
-            "<Configure>",
-            lambda _event: canvas.configure(scrollregion=canvas.bbox("all")),
-        )
-        canvas.bind(
-            "<Configure>",
-            lambda event: canvas.itemconfigure(window, width=event.width),
-        )
-
 
 class CalibrationApp(tk.Tk):
     def __init__(self) -> None:
@@ -205,6 +47,8 @@ class CalibrationApp(tk.Tk):
         self.geometry("1500x900")
         self.minsize(1120, 700)
 
+        # Application state is kept here; acquisition and analysis remain in
+        # calibration_runner.py so they can also be used from the command line.
         self.config_data = load_config(DEFAULT_CONFIG)
         self.fields: dict[str, tk.Variable] = {}
         self.process: subprocess.Popen[str] | None = None
@@ -215,19 +59,29 @@ class CalibrationApp(tk.Tk):
         self.result_images: list[Path] = []
         self.result_image_index = 0
         self.preview_image: tk.PhotoImage | None = None
+        self.reviewed_signatures: set[str] = set()
+        self.completed_dry_runs: set[str] = set()
+        self.active_signature: str | None = None
+        self.active_run_is_live = False
 
         self._configure_style()
         self._build_window()
         self._load_into_fields(self.config_data)
+        self._watch_fields()
+        self._update_workflow_steps()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(100, self._drain_messages)
 
+    # Window construction and visual styles
     def _configure_style(self) -> None:
         style = ttk.Style(self)
         style.configure("Title.TLabel", font=("TkDefaultFont", 17, "bold"))
         style.configure("Heading.TLabel", font=("TkDefaultFont", 11, "bold"))
         style.configure("Danger.TButton", foreground="#a11b1b")
         style.configure("Status.TLabel", font=("TkDefaultFont", 10, "bold"))
+        style.configure("StepDone.TLabel", foreground="#147a55", font=("TkDefaultFont", 9, "bold"))
+        style.configure("StepCurrent.TLabel", foreground="#1769aa", font=("TkDefaultFont", 9, "bold"))
+        style.configure("StepPending.TLabel", foreground="#65737e", font=("TkDefaultFont", 9))
 
     def _build_window(self) -> None:
         header = ttk.Frame(self, padding=(14, 10, 14, 8))
@@ -243,6 +97,7 @@ class CalibrationApp(tk.Tk):
         split.add(left, weight=3)
         split.add(right, weight=2)
 
+        self._build_workflow_steps(left)
         self.notebook = ttk.Notebook(left)
         self.notebook.pack(fill="both", expand=True)
         self.tabs: dict[str, ScrolledFrame] = {}
@@ -254,6 +109,7 @@ class CalibrationApp(tk.Tk):
         self._build_zero_event_tab(self.tabs["Zero-event efficiency"].body)
         self._build_dark_count_tab(self.tabs["Dark-count spectra"].body)
         self._build_vbr_tab(self.tabs["Breakdown-voltage search"].body)
+        self.notebook.bind("<<NotebookTabChanged>>", lambda _event: self._update_workflow_steps())
         self._build_common_panel(left)
         self._build_actions(left)
 
@@ -289,10 +145,22 @@ class CalibrationApp(tk.Tk):
         self.log.pack(side="left", fill="both", expand=True)
         log_scroll.pack(side="right", fill="y")
 
+    # The six visible steps are also enforced before a live run. Students can
+    # see what is missing without discovering it only at the final button.
+    def _build_workflow_steps(self, parent: ttk.Frame) -> None:
+        frame = ttk.LabelFrame(parent, text="Required workflow", padding=(8, 5))
+        frame.pack(fill="x", pady=(0, 7))
+        self.step_labels: list[ttk.Label] = []
+        names = ("Choose method", "Set values", "Review plan", "Dry run", "Check hardware", "Live run")
+        for index, name in enumerate(names, start=1):
+            label = ttk.Label(frame, text=f"{index}. {name}", style="StepPending.TLabel")
+            label.pack(side="left", padx=(0, 14))
+            self.step_labels.append(label)
+
     def _section(self, parent: ttk.Frame, title: str, row: int) -> int:
-        ttk.Separator(parent).grid(row=row, column=0, columnspan=3, sticky="ew", pady=(12, 6))
+        ttk.Separator(parent).grid(row=row, column=0, columnspan=4, sticky="ew", pady=(12, 6))
         ttk.Label(parent, text=title, style="Heading.TLabel").grid(
-            row=row + 1, column=0, columnspan=3, sticky="w"
+            row=row + 1, column=0, columnspan=4, sticky="w"
         )
         return row + 2
 
@@ -310,17 +178,47 @@ class CalibrationApp(tk.Tk):
         self.fields[key] = variable
         label_widget = ttk.Label(parent, text=label)
         label_widget.grid(row=row, column=0, sticky="w", pady=3)
-        entry_widget = ttk.Entry(parent, textvariable=variable, width=width)
+        choices: tuple[object, ...] | None = None
+        if key.endswith(".range") or ".range_" in key:
+            choices = SCOPE_RANGES_MV
+        elif key.endswith(".atten") or ".atten_" in key:
+            choices = (1, 10)
+        elif ".scope_" in key:
+            choices = ("A", "B", "C", "D")
+        elif ".detector_" in key:
+            choices = tuple(range(8))
+
+        if choices is None:
+            entry_widget: ttk.Entry | ttk.Combobox = ttk.Entry(
+                parent, textvariable=variable, width=width
+            )
+        else:
+            entry_widget = ttk.Combobox(
+                parent,
+                textvariable=variable,
+                values=choices,
+                state="readonly",
+                width=width,
+            )
         entry_widget.grid(
             row=row, column=1, sticky="ew", padx=(10, 6), pady=3
         )
         note_widget = ttk.Label(parent, text=note, foreground="#5b6570")
         note_widget.grid(row=row, column=2, sticky="w")
-        help_text = field_help(key)
+        topic = field_help(key)
         for widget in (label_widget, entry_widget, note_widget):
-            add_tooltip(widget, help_text)
+            add_tooltip(widget, topic.summary)
+        self._help_button(parent, row, 3, key)
         return row + 1
 
+    def _help_button(self, parent: tk.Misc, row: int, column: int, key: str) -> ttk.Button:
+        topic = field_help(key)
+        button = ttk.Button(parent, text="?", width=3, command=lambda: show_help(self, topic))
+        button.grid(row=row, column=column, sticky="e", padx=(5, 0), pady=2)
+        add_tooltip(button, f"Open help for {topic.title}")
+        return button
+
+    # Measurement-specific forms
     def _build_zero_event_tab(self, parent: ttk.Frame) -> None:
         row = 0
         ttk.Label(
@@ -330,7 +228,7 @@ class CalibrationApp(tk.Tk):
                 "The regular gLOWCOST tiles on A and B are tested for a response."
             ),
             wraplength=650,
-        ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(2, 8))
+        ).grid(row=row, column=0, columnspan=4, sticky="w", pady=(2, 8))
         row += 1
         row = self._section(parent, "Scan", row)
         row = self._entry(parent, row, "zero.points", "DUT overvoltages", note="V, comma separated; repeats allowed")
@@ -375,7 +273,7 @@ class CalibrationApp(tk.Tk):
                 "The displayed acquisition rate is not an absolute dead-time-corrected SiPM dark-count rate."
             ),
             wraplength=650,
-        ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(2, 8))
+        ).grid(row=row, column=0, columnspan=4, sticky="w", pady=(2, 8))
         row += 1
         row = self._section(parent, "Scan", row)
         for key, label, note in (
@@ -408,7 +306,7 @@ class CalibrationApp(tk.Tk):
                 "and the zero-spacing intercept gives the breakdown-voltage estimate."
             ),
             wraplength=650,
-        ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(2, 8))
+        ).grid(row=row, column=0, columnspan=4, sticky="w", pady=(2, 8))
         row += 1
         row = self._section(parent, "Scan", row)
         for key, label, note in (
@@ -443,11 +341,11 @@ class CalibrationApp(tk.Tk):
     def _build_common_panel(self, parent: ttk.Frame) -> None:
         panel = ttk.LabelFrame(parent, text="Hardware and files", padding=(10, 6))
         panel.pack(fill="x", pady=(8, 0))
-        for column in (1, 3):
-            panel.columnconfigure(column, weight=1)
+        panel.columnconfigure(1, weight=1)
+        panel.columnconfigure(5, weight=1)
         common_fields = (
             ("common.pi", "Detector Pi", 0, 0),
-            ("common.tools", "Analysis scripts", 0, 2),
+            ("common.tools", "Analysis scripts", 0, 4),
             ("common.output", "Run output", 1, 0),
         )
         for key, label, row, column in common_fields:
@@ -457,13 +355,15 @@ class CalibrationApp(tk.Tk):
             label_widget.grid(row=row, column=column, sticky="w", pady=3)
             entry_widget = ttk.Entry(panel, textvariable=variable)
             entry_widget.grid(
-                row=row, column=column + 1, sticky="ew", padx=(7, 12), pady=3
+                row=row, column=column + 1, sticky="ew", padx=(7, 5), pady=3
             )
-            add_tooltip(label_widget, field_help(key))
-            add_tooltip(entry_widget, field_help(key))
+            topic = field_help(key)
+            add_tooltip(label_widget, topic.summary)
+            add_tooltip(entry_widget, topic.summary)
+            self._help_button(panel, row, column + 2, key)
 
         final_label = ttk.Label(panel, text="After run")
-        final_label.grid(row=1, column=2, sticky="w")
+        final_label.grid(row=1, column=4, sticky="w")
         self.fields["common.final"] = tk.StringVar()
         final_box = ttk.Combobox(
             panel,
@@ -472,39 +372,50 @@ class CalibrationApp(tk.Tk):
             state="readonly",
             width=14,
         )
-        final_box.grid(row=1, column=3, sticky="w", padx=(7, 12))
-        add_tooltip(final_label, field_help("common.final"))
-        add_tooltip(final_box, field_help("common.final"))
+        final_box.grid(row=1, column=5, sticky="ew", padx=(7, 5))
+        final_topic = field_help("common.final")
+        add_tooltip(final_label, final_topic.summary)
+        add_tooltip(final_box, final_topic.summary)
+        self._help_button(panel, 1, 6, "common.final")
         self.fields["common.stop_temp"] = tk.BooleanVar(value=True)
         stop_temp = ttk.Checkbutton(
             panel,
             text="Stop temperature compensation during live calibration",
             variable=self.fields["common.stop_temp"],
         )
-        stop_temp.grid(row=2, column=0, columnspan=4, sticky="w", pady=(4, 0))
-        add_tooltip(stop_temp, field_help("common.stop_temp"))
+        stop_temp.grid(row=2, column=0, columnspan=6, sticky="w", pady=(4, 0))
+        stop_topic = field_help("common.stop_temp")
+        add_tooltip(stop_temp, stop_topic.summary)
+        self._help_button(panel, 2, 6, "common.stop_temp")
 
     def _build_actions(self, parent: ttk.Frame) -> None:
         actions = ttk.Frame(parent, padding=(0, 8, 0, 0))
         actions.pack(fill="x")
         self.armed = tk.BooleanVar(value=False)
-        hardware_check = ttk.Checkbutton(
-            actions, text="Hardware connections checked", variable=self.armed
+        self.hardware_check = ttk.Checkbutton(
+            actions,
+            text="Hardware connections checked",
+            variable=self.armed,
+            command=self._update_workflow_steps,
+            state="disabled",
         )
-        hardware_check.pack(anchor="w", pady=(0, 5))
+        self.hardware_check.pack(anchor="w", pady=(0, 5))
         add_tooltip(
-            hardware_check,
+            self.hardware_check,
             "Required before a live run. Tick only after verifying detector identity, channel wiring, probe attenuation, scope range, and physical bias voltage.",
         )
         button_row = ttk.Frame(actions)
         button_row.pack(fill="x")
+        self.review_button = ttk.Button(button_row, text="Review settings", command=self._review_settings)
+        self.review_button.pack(side="left", padx=(0, 4))
+        add_tooltip(self.review_button, "Validate the selected method and show the complete run plan before a dry run is allowed.")
         self.dry_button = ttk.Button(button_row, text="Dry run", command=lambda: self._start(False))
-        self.dry_button.pack(side="left", padx=(0, 4))
+        self.dry_button.pack(side="left", padx=4)
         add_tooltip(
             self.dry_button,
             "Run the selected workflow with synthetic waveforms. It tests settings, analysis, plots, and files without opening the scope or changing detector bias.",
         )
-        self.live_button = ttk.Button(button_row, text="Start live run", command=lambda: self._start(True))
+        self.live_button = ttk.Button(button_row, text="Start live run", command=lambda: self._start(True), state="disabled")
         self.live_button.pack(side="left", padx=4)
         add_tooltip(
             self.live_button,
@@ -524,16 +435,19 @@ class CalibrationApp(tk.Tk):
             hv_off_button,
             "Stop the active run and command detector channels 0-3 to the HV-off state. Always verify the physical voltage after an abnormal condition.",
         )
-        open_button = ttk.Button(button_row, text="Open results", command=self._open_results)
+        file_row = ttk.Frame(actions)
+        file_row.pack(fill="x", pady=(5, 0))
+        open_button = ttk.Button(file_row, text="Open results", command=self._open_results)
         open_button.pack(side="right")
         add_tooltip(open_button, "Open the latest run directory, or the configured output folder if no run has completed yet.")
-        load_button = ttk.Button(button_row, text="Load config", command=self._load_config_file)
+        load_button = ttk.Button(file_row, text="Load config", command=self._load_config_file)
         load_button.pack(side="right", padx=4)
         add_tooltip(load_button, "Load and validate a previously saved JSON configuration for all three workflows.")
-        save_button = ttk.Button(button_row, text="Save config", command=self._save_config_file)
+        save_button = ttk.Button(file_row, text="Save config", command=self._save_config_file)
         save_button.pack(side="right", padx=4)
         add_tooltip(save_button, "Validate the current fields and save the complete calibration configuration as JSON.")
 
+    # Configuration moves between the widgets and the saved JSON structure.
     def _load_into_fields(self, config: dict) -> None:
         common = config["common"]
         self.fields["common.pi"].set(common["pi_host"])
@@ -599,6 +513,15 @@ class CalibrationApp(tk.Tk):
     def _set_values(self, values: dict[str, object]) -> None:
         for key, value in values.items():
             self.fields[key].set(str(value))
+
+    def _watch_fields(self) -> None:
+        """Refresh the required-step display whenever an operator edits a value."""
+
+        for variable in self.fields.values():
+            variable.trace_add("write", self._field_changed)
+
+    def _field_changed(self, *_args: object) -> None:
+        self.after_idle(self._update_workflow_steps)
 
     def _current_workflow(self) -> str:
         title = self.notebook.tab(self.notebook.select(), "text")
@@ -680,16 +603,115 @@ class CalibrationApp(tk.Tk):
             for number in (1, 2)
         ]
 
+    # Review and dry-run records are tied to the exact selected configuration.
+    # Editing even one value requires those steps to be repeated.
+    def _workflow_signature(self, workflow: str, config: dict) -> str:
+        relevant = {
+            "common": config["common"],
+            "workflow": workflow,
+            "settings": config[workflow],
+        }
+        return json.dumps(relevant, sort_keys=True, separators=(",", ":"))
+
+    def _current_validated_plan(self) -> tuple[str, dict, str]:
+        workflow = self._current_workflow()
+        config = self._config_from_fields()
+        validate_config(workflow, config)
+        return workflow, config, self._workflow_signature(workflow, config)
+
+    def _update_workflow_steps(self) -> None:
+        if not hasattr(self, "step_labels"):
+            return
+        valid = False
+        reviewed = False
+        dry_complete = False
+        try:
+            _workflow, _config, signature = self._current_validated_plan()
+            valid = True
+            reviewed = signature in self.reviewed_signatures
+            dry_complete = signature in self.completed_dry_runs
+        except (ConfigurationError, KeyError, tk.TclError):
+            signature = ""
+
+        if hasattr(self, "armed") and not dry_complete and self.armed.get():
+            self.armed.set(False)
+        hardware_ready = bool(self.armed.get()) if hasattr(self, "armed") else False
+        states = (
+            "done",
+            "done" if valid else "current",
+            "done" if reviewed else ("current" if valid else "pending"),
+            "done" if dry_complete else ("current" if reviewed else "pending"),
+            "done" if hardware_ready else ("current" if dry_complete else "pending"),
+            "current" if self.run_active or (dry_complete and hardware_ready) else "pending",
+        )
+        style_for = {"done": "StepDone.TLabel", "current": "StepCurrent.TLabel", "pending": "StepPending.TLabel"}
+        for label, state in zip(self.step_labels, states):
+            label.configure(style=style_for[state])
+
+        if hasattr(self, "review_button"):
+            idle = not self.run_active
+            self.review_button.configure(state="normal" if idle and valid else "disabled")
+            self.dry_button.configure(state="normal" if idle and reviewed else "disabled")
+            self.hardware_check.configure(state="normal" if idle and dry_complete else "disabled")
+            self.live_button.configure(
+                state="normal" if idle and reviewed and dry_complete and hardware_ready else "disabled"
+            )
+
+    def _review_settings(self) -> None:
+        if self.run_active:
+            return
+        try:
+            workflow, config, signature = self._current_validated_plan()
+        except (ConfigurationError, KeyError) as exc:
+            messagebox.showerror("Check settings", str(exc))
+            return
+
+        settings = config[workflow]
+        if workflow == "zero_event":
+            scan_line = (
+                f"{len(settings['overvoltage_points_v'])} overvoltage points, "
+                f"{settings['events_per_point']} events per point"
+            )
+        elif workflow == "dark_count":
+            scan_line = (
+                f"{len(settings['overvoltage_points_v'])} overvoltage points, "
+                f"{settings['events_per_channel']} events per SiPM"
+            )
+        else:
+            scan_line = (
+                f"{len(settings['bias_points_v'])} absolute-bias points, "
+                f"{settings['events_per_point']} events per SiPM"
+            )
+        summary = (
+            f"Method: {workflow.replace('_', ' ')}\n"
+            f"Detector: {config['common']['pi_host']}\n"
+            f"Scan: {scan_line}\n"
+            f"Output: {config['common']['output_root']}\n"
+            f"After run: {config['common']['final_hardware_state']}\n\n"
+            "Check the channel map, probe attenuation, voltage points, event count, "
+            "and final hardware state. Accepting this plan unlocks the dry run."
+        )
+        if messagebox.askokcancel("Review calibration plan", summary, icon="info"):
+            self.reviewed_signatures.add(signature)
+            self.status_text.set("Settings reviewed - run the required dry run next")
+            self._update_workflow_steps()
+
+    # Run start and live-hardware confirmation
     def _start(self, live: bool) -> None:
         if self.run_active:
             messagebox.showinfo("Run active", "A calibration run is already active.")
             return
-        workflow = self._current_workflow()
         try:
-            config = self._config_from_fields()
-            validate_config(workflow, config)
+            workflow, config, signature = self._current_validated_plan()
         except (ConfigurationError, KeyError) as exc:
             messagebox.showerror("Check settings", str(exc))
+            return
+
+        if signature not in self.reviewed_signatures:
+            messagebox.showerror("Review required", "Review the current settings before running this method.")
+            return
+        if live and signature not in self.completed_dry_runs:
+            messagebox.showerror("Dry run required", "Complete a dry run with these exact settings before using hardware.")
             return
 
         if live:
@@ -718,10 +740,14 @@ class CalibrationApp(tk.Tk):
         self._append_log("\n$ " + " ".join(shlex.quote(part) for part in command))
         self.status_text.set(f"Running {workflow.replace('_', ' ')} ({'LIVE' if live else 'dry run'})")
         self.run_active = True
+        self.active_signature = signature
+        self.active_run_is_live = live
         self.cancel_requested = False
+        self.review_button.configure(state="disabled")
         self.dry_button.configure(state="disabled")
         self.live_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
+        self._update_workflow_steps()
         worker = threading.Thread(target=self._run_worker, args=(command,), daemon=True)
         worker.start()
 
@@ -765,6 +791,7 @@ class CalibrationApp(tk.Tk):
         self.wait_window(dialog)
         return bool(result["accepted"])
 
+    # Child-process output is moved back to Tkinter through a thread-safe queue.
     def _run_worker(self, command: list[str]) -> None:
         try:
             process = subprocess.Popen(
@@ -836,22 +863,28 @@ class CalibrationApp(tk.Tk):
                     if match:
                         self.last_result_dir = Path(match.group(1).strip())
                 elif kind == "finished":
+                    finished_signature = self.active_signature
+                    finished_live = self.active_run_is_live
                     self.process = None
                     self.run_active = False
+                    self.active_signature = None
+                    self.active_run_is_live = False
                     self.stop_button.configure(state="disabled")
-                    self.dry_button.configure(state="normal")
-                    self.live_button.configure(state="normal")
                     returncode = int(value)
+                    if returncode == 0 and not finished_live and finished_signature:
+                        self.completed_dry_runs.add(finished_signature)
                     self.status_text.set("Run completed" if returncode == 0 else f"Run ended with code {returncode}")
                     self._refresh_result_images()
+                    self._update_workflow_steps()
                 elif kind == "error":
                     self.process = None
                     self.run_active = False
+                    self.active_signature = None
+                    self.active_run_is_live = False
                     self.stop_button.configure(state="disabled")
-                    self.dry_button.configure(state="normal")
-                    self.live_button.configure(state="normal")
                     self.status_text.set("Run failed to start")
                     messagebox.showerror("Run error", str(value))
+                    self._update_workflow_steps()
                 elif kind == "safety":
                     returncode, output = value
                     self._append_log(str(output))
@@ -864,6 +897,7 @@ class CalibrationApp(tk.Tk):
             pass
         self.after(100, self._drain_messages)
 
+    # Result log and plot preview
     def _append_log(self, line: str) -> None:
         self.log.configure(state="normal")
         self.log.insert("end", line.rstrip() + "\n")
