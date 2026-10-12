@@ -42,7 +42,9 @@ set_biases() {
 
 # Leaving the apparatus at its normal operating point is part of the run.
 restore_operating_point() {
-  set_biases 3.0 >"$ROOT/restore_all_channels_3p0V.json" \
+  ssh -o BatchMode=yes -o ConnectTimeout=8 "$PI" \
+    "python3 $PI_SETTER --dut-overvoltage 3.0 --reference-overvoltage 3.0 --confirm SET_FOUR_SCAN_BIASES" \
+    >"$ROOT/restore_all_channels_3p0V.json" \
     2>"$ROOT/restore_all_channels_3p0V.err" || true
 }
 trap restore_operating_point EXIT
