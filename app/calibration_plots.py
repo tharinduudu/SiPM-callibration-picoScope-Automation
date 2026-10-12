@@ -41,11 +41,47 @@ def logistic(voltage: np.ndarray, plateau: float, v50: float, width: float) -> n
     return plateau / (1.0 + np.exp(-(voltage - v50) / width))
 
 
+def infer_scan_directions(points: list[tuple[int, float]]) -> dict[int, str]:
+    """Label each point from the voltage movement, including one-way scans."""
+    ordered = sorted(points)
+    if not ordered:
+        return {}
+
+    first_direction = "ascending"
+    for (_, first_voltage), (_, later_voltage) in zip(ordered, ordered[1:]):
+        if later_voltage > first_voltage:
+            first_direction = "ascending"
+            break
+        if later_voltage < first_voltage:
+            first_direction = "descending"
+            break
+
+    directions: dict[int, str] = {}
+    direction = first_direction
+    previous_voltage: float | None = None
+    for step, voltage in ordered:
+        if previous_voltage is not None:
+            if voltage > previous_voltage:
+                direction = "ascending"
+            elif voltage < previous_voltage:
+                direction = "descending"
+        directions[step] = direction
+        previous_voltage = voltage
+    return directions
+
+
 def zero_event_summary(root: Path) -> Path:
     output = root / "summary"
     output.mkdir(parents=True, exist_ok=True)
     point_dirs = sorted(root.glob("step_*_vov_*V"))
-    total_steps = len(point_dirs)
+    scan_points: list[tuple[int, float]] = []
+    for point_dir in point_dirs:
+        match = STEP_PATTERN.fullmatch(point_dir.name)
+        if match:
+            scan_points.append(
+                (int(match.group(1)), float(f"{match.group(2)}.{match.group(3)}"))
+            )
+    scan_directions = infer_scan_directions(scan_points)
     rows: list[dict] = []
     failures: list[dict] = []
 
@@ -59,7 +95,7 @@ def zero_event_summary(root: Path) -> Path:
         if not summary_path.exists():
             failures.append({"step": step, "overvoltage_V": voltage, "reason": "analysis missing"})
             continue
-        direction = "ascending" if step <= math.ceil(total_steps / 2) else "descending"
+        direction = scan_directions[step]
         for row in pd.read_csv(summary_path).to_dict("records"):
             rows.append({**row, "step": step, "overvoltage_V": voltage, "direction": direction})
 
